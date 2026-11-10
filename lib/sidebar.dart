@@ -4,7 +4,6 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/context.dart';
-import 'package:prism_ui/divider.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/l10n.dart';
 import 'package:prism_ui/press_region.dart';
@@ -18,17 +17,14 @@ import 'package:prism_ui/typography.dart';
 const _compactWidth = 48.0;
 const _expandedWidth = 220.0;
 const _itemSize = 40.0;
-const _itemGap = 4.0;
-const _toggleGap = 8.0;
-const _verticalInset = 4.0;
+const _itemGap = 6.0;
+const _toggleGap = 10.0;
+const _verticalInset = 6.0;
 const _maxSideInset = 12.0;
 const _iconSize = 24.0;
 const _labelGap = 12.0;
-const _indicatorWidth = 3.0;
-const _indicatorHeight = 16.0;
 const _expandDuration = Duration(milliseconds: 250);
-const _indicatorDuration = Duration(milliseconds: 320);
-final _itemShape = AppShape.all(10);
+final _itemShape = AppShape.all(12);
 
 class SidebarDestination {
   const SidebarDestination({required this.glyph, required this.label});
@@ -214,9 +210,6 @@ class _SidebarOverlay extends StatelessWidget {
                 autofocus: true,
                 child: Surface(
                   color: colorScheme.chromeSurface,
-                  shape: BorderDirectional(
-                    end: Divider.createBorderSide(context),
-                  ),
                   elevation: 8,
                   shadowColor: colorScheme.shadow,
                   child: AnimatedBuilder(
@@ -235,10 +228,11 @@ class _SidebarOverlay extends StatelessWidget {
 
 class _SidebarColors {
   _SidebarColors(ColorScheme scheme)
-    : selectedFill = scheme.onSurface.withValues(alpha: 0.08),
+    : selectedFill = scheme.primary.withValues(alpha: 0.12),
       label = scheme.onSurface,
+      selectedLabel = scheme.primary,
       icon = scheme.onSurfaceVariant,
-      indicator = scheme.primary,
+      selectedIcon = scheme.primary,
       overlay = WidgetStateProperty.fromMap({
         WidgetState.pressed: scheme.onSurface.withValues(alpha: 0.06),
         WidgetState.focused: scheme.onSurface.withValues(alpha: 0.1),
@@ -248,8 +242,9 @@ class _SidebarColors {
 
   final Color selectedFill;
   final Color label;
+  final Color selectedLabel;
   final Color icon;
-  final Color indicator;
+  final Color selectedIcon;
   final WidgetStateProperty<Color> overlay;
 }
 
@@ -287,6 +282,7 @@ class _SidebarPane extends StatelessWidget {
     final labelStyle = AppTextStyle.subheadline
         .of(context)
         .copyWith(color: colors.label);
+    final selectedLabelStyle = labelStyle.copyWith(color: colors.selectedLabel);
     final labelWidth = rowWidth - iconInset - _iconSize - _labelGap * 2;
     String rowTooltip(String label) =>
         expanded &&
@@ -322,37 +318,28 @@ class _SidebarPane extends StatelessWidget {
             child: ScrollConfiguration(
               behavior: const HiddenBarScrollBehavior(),
               child: SingleChildScrollView(
-                child: Stack(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final (index, destination) in destinations.indexed)
-                          _SidebarButton(
-                            key: ValueKey(destination.label),
-                            colors: colors,
-                            height: itemHeight,
-                            sideInset: sideInset,
-                            selected: index == selectedIndex,
-                            tooltip: rowTooltip(destination.label),
-                            onTap: () => onSelected(index),
-                            child: _DestinationRow(
-                              destination: destination,
-                              selected: index == selectedIndex,
-                              width: rowWidth,
-                              iconInset: iconInset,
-                              style: labelStyle,
-                              labelOpacity: labelOpacity,
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (selectedIndex < destinations.length)
-                      _SelectionIndicator(
-                        color: colors.indicator,
-                        index: selectedIndex,
-                        start: sideInset,
-                        stride: itemHeight + _itemGap,
+                    for (final (index, destination) in destinations.indexed)
+                      _SidebarButton(
+                        key: ValueKey(destination.label),
+                        colors: colors,
+                        height: itemHeight,
+                        sideInset: sideInset,
+                        selected: index == selectedIndex,
+                        tooltip: rowTooltip(destination.label),
+                        onTap: () => onSelected(index),
+                        child: _DestinationRow(
+                          destination: destination,
+                          selected: index == selectedIndex,
+                          width: rowWidth,
+                          iconInset: iconInset,
+                          style: index == selectedIndex
+                              ? selectedLabelStyle
+                              : labelStyle,
+                          labelOpacity: labelOpacity,
+                        ),
                       ),
                   ],
                 ),
@@ -411,7 +398,10 @@ class _SidebarButton extends StatelessWidget {
               message: tooltip,
               excludeFromSemantics: !tooltipIsLabel,
               child: IconTheme.merge(
-                data: IconThemeData(size: _iconSize, color: colors.icon),
+                data: IconThemeData(
+                  size: _iconSize,
+                  color: selected == true ? colors.selectedIcon : colors.icon,
+                ),
                 child: SizedBox(height: height, child: child),
               ),
             ),
@@ -492,83 +482,3 @@ class _DestinationRow extends StatelessWidget {
   }
 }
 
-/// The indicator moves by stretching toward the new row before its trailing
-/// edge catches up, rather than sliding at a fixed size.
-class _SelectionIndicator extends StatefulWidget {
-  const _SelectionIndicator({
-    required this.color,
-    required this.index,
-    required this.start,
-    required this.stride,
-  });
-
-  final Color color;
-  final int index;
-  final double start;
-  final double stride;
-
-  @override
-  State<_SelectionIndicator> createState() => _SelectionIndicatorState();
-}
-
-class _SelectionIndicatorState extends State<_SelectionIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: _indicatorDuration,
-    value: 1,
-  );
-  late int _from = widget.index;
-
-  @override
-  void didUpdateWidget(covariant _SelectionIndicator oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.index != widget.index) {
-      _from = oldWidget.index;
-      _controller.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  double _topOf(int index) =>
-      index * widget.stride + (widget.stride - _indicatorHeight) / 2;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final t = _controller.value;
-        final from = _topOf(_from);
-        final to = _topOf(widget.index);
-        final lead = Curves.easeOutCubic.transform(math.min(1, t / 0.6));
-        final trail = Curves.easeInOutCubic.transform(
-          math.max(0, (t - 0.35) / 0.65),
-        );
-        final (top, bottom) = to >= from
-            ? (lerpDouble(from, to, trail)!, lerpDouble(from, to, lead)!)
-            : (lerpDouble(from, to, lead)!, lerpDouble(from, to, trail)!);
-        return PositionedDirectional(
-          start: widget.start,
-          top: top,
-          width: _indicatorWidth,
-          height: bottom - top + _indicatorHeight,
-          child: child!,
-        );
-      },
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: ShapeDecoration(
-            color: widget.color,
-            shape: AppShape.full,
-          ),
-        ),
-      ),
-    );
-  }
-}
